@@ -4,6 +4,7 @@ plugins {
 }
 
 android {
+    namespace 'anon.fidoac' // 设置命名空间，通常与 applicationId 相同或一致
     signingConfigs {
         debug {
             storeFile file('\\debug.keystore')
@@ -18,12 +19,12 @@ android {
             keyPassword 'android'
         }
     }
-    compileSdk 32
+    compileSdk 33
 
     defaultConfig {
         applicationId "anon.fidoac"
         minSdk 26
-        targetSdk 32
+        targetSdk 33
         versionCode 1
         versionName "1.0"
 
@@ -32,6 +33,14 @@ android {
             cmake {
                 cppFlags ''
             }
+        }
+
+        ndk {
+            // 在这里添加或确保包含 'x86_64'
+            // 'armeabi-v7a' 和 'arm64-v8a' 是针对32位和64位ARM设备（绝大多数真机）
+            // 'x86_64' 是针对64位Intel/AMD处理器的模拟器
+            // abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
+            abiFilters "x86_64"
         }
     }
 
@@ -43,20 +52,27 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '21'
     }
+
+    ndkVersion "29.0.13599879"
+    compileSdkVersion 33
+//    buildToolsVersion "34.0.0"
+
 //    externalNativeBuild {
 //        cmake {
-//            path file('src/main/cpp/CMakeLists.txt')
-//            version '3.18.1'
+////            path file('src/main/cpp/CMakeLists.txt')
+////            version '3.18.1'
+//            abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
 //        }
 //    }
     buildFeatures {
         viewBinding true
+        buildConfig true
     }
 }
 
@@ -65,7 +81,7 @@ apply plugin: 'org.mozilla.rust-android-gradle.rust-android'
 cargo {
     module  = "../rust"       // Or whatever directory contains your Cargo.toml
     libname = "rust"          // Or whatever matches Cargo.toml's [package] name.
-    targets = ["arm64"]  // , "x86_64" for x86 android simulator
+    targets = ["x86_64"]  // , "x86_64" for x86 android simulator
     profile= "release" //release or debug.
 }
 
@@ -97,4 +113,85 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
+}
+
+// ===================================================================
+// 自定义任务：构建 Rust 库并复制到 jniLibs
+// ===================================================================
+tasks.register('buildAndCopyRustLibs') {
+    // 1. 定义需要配置的变量
+    // =================================================
+    // !!! 请根据你的项目结构修改此路径 !!!
+    // 从 app/ 目录到 Rust 项目根目录的相对路径
+    def rustProjectPath = '../rust'
+
+    // !!! 请根据你的 Cargo.toml 修改此库名 !!!
+    // 在 Cargo.toml 的 [lib] 下找到 name = "..." 的值
+    def rustLibName = "rust" // 举例，请替换成你的库名
+
+    // 定义需要支持的 Android ABIs 及其对应的 Rust Target
+    def abiConfigs = [
+            //  Android ABI   : Rust Target
+//            'arm64-v8a'   : 'aarch64-linux-android',
+//            'armeabi-v7a' : 'armv7-linux-androideabi',
+            'x86_64': 'x86_64-linux-android',
+//            'x86'         : 'i686-linux-android'
+    ]
+    // =================================================
+
+    // 2. 为任务添加描述，方便在 Android Studio 的 Gradle 面板中查看
+    description "Builds the Rust native library for all ABIs and copies the .so files to jniLibs."
+    group "rust"
+
+    def rustDir = file(rustProjectPath).absolutePath
+
+    // 3. doLast 代码块包含任务执行时的所有逻辑
+    doLast {
+        // 遍历所有配置的 ABI
+        abiConfigs.each { androidAbi, rustTarget ->
+            println ">>> Building Rust library for ABI: ${androidAbi} (Target: ${rustTarget})"
+
+            if (!file(rustDir).exists()) {
+                throw new GradleException("❌ Rust目录不存在: $rustDir")
+            }
+
+            // 步骤 1: 调用 cargo ndk build 命令
+            // 使用 exec 来执行外部命令
+            // 使用 project.exec() 替代弃用的 exec
+            project.exec {
+                // 为所有系统统一设置工作目录
+                workingDir rustDir
+
+                if (org.gradle.nativeplatform.platform.internal.DefaultNativePlatform.currentOperatingSystem.isWindows()) {
+                    commandLine 'cmd', '/c', 'cargo', 'build', '--release', '--target', rustTarget
+                } else {
+                    commandLine 'cargo', 'build', '--release', '--target', rustTarget
+                }
+            }
+
+            // 步骤 2: 计算源文件路径和目标目录路径
+            // Cargo 构建产物的标准路径
+            def sourceFile = file("${rustDir}/target/${rustTarget}/release/lib${rustLibName}.so")
+            // Android jniLibs 的标准路径
+            def destinationDir = file("src/main/jniLibs/${androidAbi}")
+
+            // 检查 .so 文件是否存在
+            if (!sourceFile.exists()) {
+                throw new GradleException("Build succeeded but the .so file was not found at: ${sourceFile}")
+            }
+
+            println ">>> Copying ${sourceFile.name} to ${destinationDir}"
+
+            // 步骤 3: 将 .so 文件复制到 jniLibs/<ABI>/ 对应的位置
+            copy {
+                from sourceFile
+                into destinationDir
+            }
+        }
+        println ">>> Successfully built and copied all Rust libraries."
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'buildAndCopyRustLibs'
 }

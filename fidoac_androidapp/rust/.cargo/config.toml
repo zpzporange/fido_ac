@@ -1,0 +1,39 @@
+# 文件路径: your-rust-project/.cargo/config.toml
+
+# 1. 为目标平台 x86_64-linux-android 指定工具链
+[target.x86_64-linux-android]
+# 指定链接器为 Android NDK 中的 Clang 编译器
+# 这直接解决了 "linker `cc` not found" 的错误
+linker = "C:/Users/Alan/AppData/Local/Android/Sdk/ndk/29.0.13599879/toolchains/llvm/prebuilt/windows-x86_64/bin/x86_64-linux-android33-clang.cmd"
+
+# 指定归档器 (Archiver)，用于创建静态库 (.a 文件)
+# 在交叉编译中，必须明确告知 Rust 使用目标平台的归档器
+ar = "C:/Users/Alan/AppData/Local/Android/Sdk/ndk/29.0.13599879/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+
+# 2. 修改全局构建配置
+[build]
+# 移除 crt-static 标志，因为 cargo-ndk 会处理链接选项
+rustflags = [
+    # 启用位置无关代码（动态库必需）
+    "-C", "relocation-model=pic",
+
+    # 添加与 Android NDK 兼容的链接器标志
+    "-C", "link-arg=-Wl,--enable-new-dtags",
+    "-C", "link-arg=-Wl,-z,nodelete",
+    "-C", "link-arg=-Wl,-z,relro,-z,now",
+    "-C", "link-arg=-Wl,--gc-sections",
+
+    # 设置动态库版本和名称（可选）
+    "-C", "link-arg=-Wl,-soname,librust.so"
+]
+
+# 3. 添加 cargo-ndk 特定配置
+# 设置目标API级别（根据您的NDK版本调整）
+[target.'cfg(target_os = "android")']
+android-ndk = "29.0.13599879"
+android-platform = 33
+
+# 4. 配置 cargo-ndk 的构建目标
+[ndk]
+# 指定默认目标平台
+default_target = "x86_64-linux-android"

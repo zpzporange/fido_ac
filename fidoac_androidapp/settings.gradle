@@ -1,13 +1,28 @@
 pluginManagement {
     repositories {
-        gradlePluginPortal()
+        // 阿里云镜像源（国内推荐）
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+
+        // 备用镜像源（腾讯云）
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/gradle-plugin/' }
+
+        // 保留官方源兜底
         google()
         mavenCentral()
+        gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // 优先阿里云镜像源
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+
+        // 保留官方源
         google()
         mavenCentral()
         maven { url "https://nexus.coppernic.fr/repository/libs-release" }

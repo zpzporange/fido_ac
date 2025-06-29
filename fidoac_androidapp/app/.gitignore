@@ -1,1 +1,3 @@
 /build
+# 忽略由 Gradle 任务自动生成的 Android JNI 库
+/android-client/app/src/main/jniLibs/
